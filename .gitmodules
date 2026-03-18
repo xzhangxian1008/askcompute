@@ -1,0 +1,9 @@
+[submodule "contrib/agent-rules"]
+	path = contrib/agent-rules
+	url = https://gh-proxy.org/https://github.com/pingcap/agent-rules.git
+[submodule "contrib/tidb"]
+	path = contrib/tidb
+	url = https://gh-proxy.org/https://github.com/pingcap/tidb.git
+[submodule "contrib/tidb-docs"]
+	path = contrib/tidb-docs
+	url = https://github.com/pingcap/docs.git
