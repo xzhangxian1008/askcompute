@@ -190,8 +190,3 @@ go build -o bin/askplanner_lark ./cmd/larkbot
 go build -o bin/printprompt ./cmd/printprompt
 go test ./...
 ```
-
-## TODO
-1. rotate log to avoid getting log too large
-2. optimize the write process of session store
-3. fix the larkbot message resent problem
