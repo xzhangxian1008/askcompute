@@ -310,6 +310,14 @@ func buildImageQuestion(ctx context.Context, apiClient *lark.Client, fileDir, me
 }
 
 func downloadMessageResource(ctx context.Context, apiClient *lark.Client, fileDir, messageID, fileKey, resourceType string) (string, string, error) {
+	dir := filepath.Join(fileDir, sanitizePathSegment(messageID, "message"))
+	if err := os.MkdirAll(dir, 0o755); err != nil {
+		return "", "", fmt.Errorf("create file dir: %w", err)
+	}
+
+	var originalName string
+	var writeFile func(string) error
+
 	resp, err := apiClient.Im.V1.MessageResource.Get(ctx,
 		larkim.NewGetMessageResourceReqBuilder().
 			MessageId(messageID).
@@ -319,25 +327,21 @@ func downloadMessageResource(ctx context.Context, apiClient *lark.Client, fileDi
 	if err != nil {
 		return "", "", fmt.Errorf("download %s from Feishu: %w", resourceType, err)
 	}
+	if resp != nil && !resp.Success() {
+		return "", "", fmt.Errorf("download %s from Feishu failed: code=%d, msg=%s", resourceType, resp.Code, resp.Msg)
+	}
 	if resp == nil || resp.File == nil {
 		return "", "", fmt.Errorf("download %s from Feishu: empty response", resourceType)
 	}
-	if !resp.Success() {
-		return "", "", fmt.Errorf("download %s from Feishu failed: code=%d, msg=%s", resourceType, resp.Code, resp.Msg)
-	}
+	originalName = resp.FileName
+	writeFile = resp.WriteFile
 
-	dir := filepath.Join(fileDir, sanitizePathSegment(messageID, "message"))
-	if err := os.MkdirAll(dir, 0o755); err != nil {
-		return "", "", fmt.Errorf("create file dir: %w", err)
-	}
-
-	originalName := resp.FileName
 	if strings.TrimSpace(originalName) == "" {
 		originalName = fileKey + ".png"
 	}
 	originalName = sanitizeFileName(originalName)
 	localPath := filepath.Join(dir, originalName)
-	if err := resp.WriteFile(localPath); err != nil {
+	if err := writeFile(localPath); err != nil {
 		return "", "", fmt.Errorf("write file %s: %w", localPath, err)
 	}
 
