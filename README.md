@@ -196,7 +196,7 @@ Lark-specific variables:
 | `FEISHU_FILE_DIR` | No | Local directory for downloaded Lark file attachments; defaults to `.askplanner/lark-files` |
 | `FEISHU_FILE_RETENTION_HOURS` | No | How long downloaded attachments are kept before cleanup; defaults to `24` (matches session TTL) |
 | `FEISHU_RECENT_FILE_WINDOW_MIN` | No | Recent-file lookup window in minutes; defaults to `10` |
-| `FEISHU_RECENT_FILE_KEYWORDS` | No | Comma-separated keywords that trigger recent-file lookup; defaults to `file,files,attachment,attachments,zip,replayer,plan replayer,文件,附件,压缩包` |
+| `FEISHU_RECENT_FILE_KEYWORDS` | No | Comma-separated keywords that trigger recent-file lookup; defaults to `file,files,attachment,attachments,image,images,screenshot,zip,replayer,plan replayer,文件,附件,图片,截图,压缩包` |
 
 ## Build and Verify
 

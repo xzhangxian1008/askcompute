@@ -255,7 +255,7 @@ func buildTextQuestion(ctx context.Context, apiClient *lark.Client, filePolicy r
 		return text, nil
 	}
 
-	localPath, originalName, err := downloadMessageResource(ctx, apiClient, filePolicy.dir, ref.messageID, ref.fileKey, "file")
+	localPath, originalName, err := downloadMessageResource(ctx, apiClient, filePolicy.dir, ref.messageID, ref.fileKey, ref.resourceType)
 	if err != nil {
 		log.Printf("[larkbot] recent file download failed for message_id=%s source_message_id=%s: %v",
 			extractMessageID(event), ref.messageID, err)
@@ -359,8 +359,9 @@ func shouldAttachRecentFile(text string, keywords []string) bool {
 }
 
 type recentFileRef struct {
-	messageID string
-	fileKey   string
+	messageID    string
+	fileKey      string
+	resourceType string // "file" or "image"
 }
 
 func findRecentFileMessage(ctx context.Context, apiClient *lark.Client, event *larkim.P2MessageReceiveV1, lookback time.Duration) (*recentFileRef, error) {
@@ -434,7 +435,8 @@ func matchRecentFileMessage(item *larkim.Message, event *larkim.P2MessageReceive
 	if messageID == "" || messageID == currentMessageID {
 		return nil, false
 	}
-	if trimPtr(item.MsgType) != "file" {
+	msgType := trimPtr(item.MsgType)
+	if msgType != "file" && msgType != "image" {
 		return nil, false
 	}
 	if !sameSender(item, senderIDs) {
@@ -446,14 +448,23 @@ func matchRecentFileMessage(item *larkim.Message, event *larkim.P2MessageReceive
 		return nil, false
 	}
 
-	fileKey := extractFileKeyFromMessage(item)
+	var fileKey, resourceType string
+	switch msgType {
+	case "file":
+		fileKey = extractFileKeyFromMessage(item)
+		resourceType = "file"
+	case "image":
+		fileKey = extractImageKeyFromMessage(item)
+		resourceType = "image"
+	}
 	if fileKey == "" {
 		return nil, false
 	}
 
 	return &recentFileRef{
-		messageID: messageID,
-		fileKey:   fileKey,
+		messageID:    messageID,
+		fileKey:      fileKey,
+		resourceType: resourceType,
 	}, true
 }
 
@@ -467,6 +478,18 @@ func extractFileKeyFromMessage(item *larkim.Message) string {
 		return ""
 	}
 	return strings.TrimSpace(payload.FileKey)
+}
+
+func extractImageKeyFromMessage(item *larkim.Message) string {
+	if item == nil || item.Body == nil || item.Body.Content == nil {
+		return ""
+	}
+
+	var payload larkim.MessageImage
+	if err := json.Unmarshal([]byte(strings.TrimSpace(*item.Body.Content)), &payload); err != nil {
+		return ""
+	}
+	return strings.TrimSpace(payload.ImageKey)
 }
 
 func sameThread(item *larkim.Message, event *larkim.P2MessageReceiveV1) bool {

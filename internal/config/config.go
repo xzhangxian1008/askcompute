@@ -34,10 +34,10 @@ type Config struct {
 	FeishuAppSecret           string
 	FeishuBotName             string
 	FeishuDedupTimeoutInMin   int
-	FeishuFileDir              string // absolute path
-	FeishuFileRetentionHours   int
-	FeishuRecentFileWindowMin  int
-	FeishuRecentFileKeywords   []string
+	FeishuFileDir             string // absolute path
+	FeishuFileRetentionHours  int
+	FeishuRecentFileWindowMin int
+	FeishuRecentFileKeywords  []string
 }
 
 func Load() (*Config, error) {
@@ -62,19 +62,24 @@ func Load() (*Config, error) {
 		FeishuAppSecret:           os.Getenv("FEISHU_APP_SECRET"),
 		FeishuBotName:             strings.ToLower(strings.TrimSpace(envOrDefault("FEISHU_BOT_NAME", "askplanner"))),
 		FeishuDedupTimeoutInMin:   envAsInt("FEISHU_DEDUP_MESSAGE_TIMEOUT_IN_MIN", 3600),
-		FeishuFileDir:              resolvePath(projectRoot, envOrDefault("FEISHU_FILE_DIR", ".askplanner/lark-files")),
-		FeishuFileRetentionHours:   envAsInt("FEISHU_FILE_RETENTION_HOURS", 24),
-		FeishuRecentFileWindowMin:  envAsInt("FEISHU_RECENT_FILE_WINDOW_MIN", 10),
+		FeishuFileDir:             resolvePath(projectRoot, envOrDefault("FEISHU_FILE_DIR", ".askplanner/lark-files")),
+		FeishuFileRetentionHours:  envAsInt("FEISHU_FILE_RETENTION_HOURS", 24),
+		FeishuRecentFileWindowMin: envAsInt("FEISHU_RECENT_FILE_WINDOW_MIN", 10),
 		FeishuRecentFileKeywords: envAsCSV("FEISHU_RECENT_FILE_KEYWORDS", []string{
 			"file",
 			"files",
 			"attachment",
 			"attachments",
+			"image",
+			"images",
+			"screenshot",
 			"zip",
 			"replayer",
 			"plan replayer",
 			"文件",
 			"附件",
+			"图片",
+			"截图",
 			"压缩包",
 		}),
 	}, nil
