@@ -5,6 +5,7 @@
 - support process plan replayer(unzip replayer and start diagnose automatically)
 - support diagnose by clinic link
 - error handling: make sure all errors should return to user clearly(like network issue, rate limte ect)
+- output a markdown file if output too long
 
 ## implementation pespective
 - rotate log to avoid getting log too large
