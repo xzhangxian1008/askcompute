@@ -331,7 +331,7 @@ func saveDirectAttachment(ctx context.Context, apiClient *lark.Client, manager *
 	if err != nil {
 		return "", err
 	}
-	return buildSaveSummary("Saved", result.Library.RootDir, []attachments.SaveResult{*result}), nil
+	return buildSaveSummary("Saved", []attachments.SaveResult{*result}), nil
 }
 
 func downloadRecentAttachments(ctx context.Context, apiClient *lark.Client, manager *attachments.Manager, event *larkim.P2MessageReceiveV1, userKey string, count int) (string, codex.AttachmentContext, error) {
@@ -366,8 +366,7 @@ func downloadRecentAttachments(ctx context.Context, apiClient *lark.Client, mana
 	if err != nil {
 		return "", codex.AttachmentContext{}, err
 	}
-	libraryDir := attachmentCtx.RootDir
-	return buildSaveSummary("Downloaded", libraryDir, results), attachmentCtx, nil
+	return buildSaveSummary("Downloaded", results), attachmentCtx, nil
 }
 
 func buildAttachmentContext(manager *attachments.Manager, userKey string) (codex.AttachmentContext, error) {
@@ -394,9 +393,9 @@ func buildAttachmentContext(manager *attachments.Manager, userKey string) (codex
 	}, nil
 }
 
-func buildSaveSummary(verb, libraryDir string, results []attachments.SaveResult) string {
+func buildSaveSummary(verb string, results []attachments.SaveResult) string {
 	var sb strings.Builder
-	fmt.Fprintf(&sb, "%s %d item(s) into %s.", verb, len(results), libraryDir)
+	fmt.Fprintf(&sb, "%s %d item(s).", verb, len(results))
 	if len(results) == 0 {
 		sb.WriteString(" No matching attachments were found.")
 		return sb.String()

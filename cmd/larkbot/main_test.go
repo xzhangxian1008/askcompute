@@ -1,9 +1,13 @@
 package main
 
 import (
+	"strings"
 	"testing"
+	"time"
 
 	larkim "github.com/larksuite/oapi-sdk-go/v3/service/im/v1"
+
+	"lab/askplanner/internal/attachments"
 )
 
 func TestParseUploadCommand(t *testing.T) {
@@ -46,5 +50,23 @@ func TestBuildConversationKeyUsesThreadAndUser(t *testing.T) {
 
 	if got := buildConversationKey(event); got != "lark:thread:omt-thread:user:ou_user" {
 		t.Fatalf("conversation key = %q", got)
+	}
+}
+
+func TestBuildSaveSummaryDoesNotExposeLocalPath(t *testing.T) {
+	summary := buildSaveSummary("Downloaded", []attachments.SaveResult{{
+		UserDir: "/home/gjt/work/askplanner/.askplanner/lark-files/ou_xxx",
+		Item: attachments.Item{
+			Name:      "image_20260320_091914_om_x.png",
+			Type:      attachments.ItemTypeImage,
+			CreatedAt: time.Now(),
+		},
+	}})
+
+	if strings.Contains(summary, "/home/gjt/work/askplanner/.askplanner/lark-files/ou_xxx") {
+		t.Fatalf("summary leaked local path: %s", summary)
+	}
+	if !strings.Contains(summary, "image_20260320_091914_om_x.png [image]") {
+		t.Fatalf("summary missing file entry: %s", summary)
 	}
 }
