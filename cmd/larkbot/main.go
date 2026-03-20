@@ -29,6 +29,8 @@ const (
 	messagePageSize              = 50
 	maxUploadCommandPages        = 20
 	promptAttachmentSummaryLimit = 20
+	typingReactionType           = "Typing"
+	feishuReactionTimeout        = 10 * time.Second
 )
 
 type botIdentity struct {
@@ -147,20 +149,22 @@ func main() {
 				return nil
 			}
 
-			answer, err := handleEvent(ctx, apiClient, responder, prefetcher, attachmentManager, event)
-			if err != nil {
-				log.Printf("[larkbot] handle event error: %v (message_id=%s)", err, messageID)
-				answer = "Agent Error: " + err.Error()
-			}
+			return withTypingReaction(ctx, apiClient, messageID, func() error {
+				answer, err := handleEvent(ctx, apiClient, responder, prefetcher, attachmentManager, event)
+				if err != nil {
+					log.Printf("[larkbot] handle event error: %v (message_id=%s)", err, messageID)
+					answer = "Agent Error: " + err.Error()
+				}
 
-			content, err := buildTextContent(answer)
-			if err != nil {
-				return fmt.Errorf("build reply content: %w", err)
-			}
-			if err := replyMessage(ctx, apiClient, messageID, content); err != nil {
-				return fmt.Errorf("reply message: %w", err)
-			}
-			return nil
+				content, err := buildTextContent(answer)
+				if err != nil {
+					return fmt.Errorf("build reply content: %w", err)
+				}
+				if err := replyMessage(ctx, apiClient, messageID, content); err != nil {
+					return fmt.Errorf("reply message: %w", err)
+				}
+				return nil
+			})
 		})
 
 	cli := larkws.NewClient(cfg.FeishuAppID, cfg.FeishuAppSecret,
@@ -921,6 +925,73 @@ func buildTextContent(text string) (string, error) {
 		return "", err
 	}
 	return string(b), nil
+}
+
+func withTypingReaction(ctx context.Context, apiClient *lark.Client, messageID string, run func() error) error {
+	reactionID, err := addTypingReaction(ctx, apiClient, messageID)
+	if err != nil {
+		log.Printf("[larkbot] add typing reaction failed: %v (message_id=%s)", err, messageID)
+		return run()
+	}
+
+	defer func() {
+		cleanupCtx, cancel := context.WithTimeout(context.Background(), feishuReactionTimeout)
+		defer cancel()
+		if err := deleteMessageReaction(cleanupCtx, apiClient, messageID, reactionID); err != nil {
+			log.Printf("[larkbot] delete typing reaction failed: %v (message_id=%s, reaction_id=%s)", err, messageID, reactionID)
+		}
+	}()
+
+	return run()
+}
+
+func addTypingReaction(ctx context.Context, apiClient *lark.Client, messageID string) (string, error) {
+	reactionCtx, cancel := context.WithTimeout(ctx, feishuReactionTimeout)
+	defer cancel()
+
+	resp, err := apiClient.Im.V1.MessageReaction.Create(reactionCtx,
+		larkim.NewCreateMessageReactionReqBuilder().
+			MessageId(messageID).
+			Body(larkim.NewCreateMessageReactionReqBodyBuilder().
+				ReactionType(larkim.NewEmojiBuilder().
+					EmojiType(typingReactionType).
+					Build()).
+				Build()).
+			Build())
+	if err != nil {
+		return "", fmt.Errorf("call create reaction API: %w", err)
+	}
+	if !resp.Success() {
+		return "", fmt.Errorf("create reaction API error: code=%d, msg=%s", resp.Code, resp.Msg)
+	}
+
+	reactionID := ""
+	if resp.Data != nil {
+		reactionID = trimPtr(resp.Data.ReactionId)
+	}
+	if reactionID == "" {
+		return "", fmt.Errorf("create reaction API returned empty reaction_id")
+	}
+
+	log.Printf("[larkbot] typing reaction added (message_id=%s, reaction_id=%s)", messageID, reactionID)
+	return reactionID, nil
+}
+
+func deleteMessageReaction(ctx context.Context, apiClient *lark.Client, messageID, reactionID string) error {
+	resp, err := apiClient.Im.V1.MessageReaction.Delete(ctx,
+		larkim.NewDeleteMessageReactionReqBuilder().
+			MessageId(messageID).
+			ReactionId(reactionID).
+			Build())
+	if err != nil {
+		return fmt.Errorf("call delete reaction API: %w", err)
+	}
+	if !resp.Success() {
+		return fmt.Errorf("delete reaction API error: code=%d, msg=%s", resp.Code, resp.Msg)
+	}
+
+	log.Printf("[larkbot] typing reaction deleted (message_id=%s, reaction_id=%s)", messageID, reactionID)
+	return nil
 }
 
 func replyMessage(ctx context.Context, apiClient *lark.Client, messageID, content string) error {
