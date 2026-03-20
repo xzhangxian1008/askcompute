@@ -163,14 +163,65 @@ func writeClinicContext(sb *strings.Builder, clinic *ClinicContext) {
 		sb.WriteByte('\n')
 	}
 	sb.WriteString("- Clinic aggregate slow query stats:")
-	sb.WriteString(fmt.Sprintf(" total_queries=%d unique_digests=%d avg_query_time_sec=%.6f max_query_time_sec=%.6f\n",
-		clinic.Summary.TotalQueries,
-		clinic.Summary.UniqueDigests,
+	sb.WriteString(fmt.Sprintf(" total_queries=%d", clinic.Summary.TotalQueries))
+	if clinic.Summary.UniqueDigests > 0 {
+		sb.WriteString(fmt.Sprintf(" unique_digests=%d", clinic.Summary.UniqueDigests))
+	}
+	sb.WriteString(fmt.Sprintf(" avg_query_time_sec=%.6f max_query_time_sec=%.6f\n",
 		clinic.Summary.AvgQueryTime,
 		clinic.Summary.MaxQueryTime,
 	))
 	if clinic.NoRows {
 		sb.WriteString("- Clinic query returned no slow query rows for this exact scope.\n")
+		return
+	}
+	if clinic.IsDetail && len(clinic.DetailRows) > 0 {
+		sb.WriteString("- Clinic slow-query detail rows:\n")
+		for _, row := range clinic.DetailRows {
+			sb.WriteString("  - ")
+			sb.WriteString(fmt.Sprintf("time_unix=%.6f digest=%s query_time_sec=%.6f parse_sec=%.6f compile_sec=%.6f cop_sec=%.6f process_sec=%.6f wait_sec=%.6f",
+				row.TimeUnix,
+				row.Digest,
+				row.QueryTime,
+				row.ParseTime,
+				row.CompileTime,
+				row.CopTime,
+				row.ProcessTime,
+				row.WaitTime,
+			))
+			if row.TotalKeys > 0 {
+				sb.WriteString(fmt.Sprintf(" total_keys=%d", row.TotalKeys))
+			}
+			if row.ProcessKeys > 0 {
+				sb.WriteString(fmt.Sprintf(" process_keys=%d", row.ProcessKeys))
+			}
+			if row.ResultRows > 0 {
+				sb.WriteString(fmt.Sprintf(" result_rows=%d", row.ResultRows))
+			}
+			if row.MemBytes > 0 {
+				sb.WriteString(fmt.Sprintf(" mem_bytes=%d", row.MemBytes))
+			}
+			if row.DiskBytes > 0 {
+				sb.WriteString(fmt.Sprintf(" disk_bytes=%d", row.DiskBytes))
+			}
+			if row.Database != "" {
+				sb.WriteString(" db=")
+				sb.WriteString(row.Database)
+			}
+			if row.Instance != "" {
+				sb.WriteString(" instance=")
+				sb.WriteString(row.Instance)
+			}
+			if row.Indexes != "" {
+				sb.WriteString(" indexes=")
+				sb.WriteString(compactText(row.Indexes, 120))
+			}
+			if row.Query != "" {
+				sb.WriteString(" query=")
+				sb.WriteString(compactText(row.Query, 240))
+			}
+			sb.WriteByte('\n')
+		}
 		return
 	}
 	if len(clinic.TopDigests) == 0 {

@@ -17,13 +17,15 @@ var (
 )
 
 type LinkSpec struct {
-	RawURL    string
-	ClusterID string
-	StartTime time.Time
-	EndTime   time.Time
-	Digest    string
-	Database  string
-	Instance  string
+	RawURL     string
+	ClusterID  string
+	StartTime  time.Time
+	EndTime    time.Time
+	Digest     string
+	Database   string
+	Instance   string
+	IsDetail   bool
+	AnchorTime time.Time
 }
 
 func ParseSlowQueryLink(text string) (*LinkSpec, bool, error) {
@@ -62,6 +64,7 @@ func parseSlowQueryURL(raw string) (*LinkSpec, bool, error) {
 		Digest:    firstValue(values, "digest", "sqlDigest", "sql_digest", "queryDigest"),
 		Database:  firstValue(values, "db", "database", "schema", "schema_name"),
 		Instance:  firstValue(values, "instance", "tidbAddr", "tidb_addr", "address", "node"),
+		IsDetail:  isSlowQueryDetailRoute(routeText),
 	}
 
 	start, end, hasExplicitRange, err := parseTimeRange(values)
@@ -71,12 +74,13 @@ func parseSlowQueryURL(raw string) (*LinkSpec, bool, error) {
 	if hasExplicitRange {
 		spec.StartTime = start
 		spec.EndTime = end
-	} else if isSlowQueryDetailRoute(routeText) {
+	} else if spec.IsDetail {
 		at, err := parseDetailTimestamp(firstValue(values, "timestamp", "time"))
 		if err != nil {
 			return nil, true, err
 		}
 		if !at.IsZero() {
+			spec.AnchorTime = at
 			spec.StartTime = at.Add(-detailTimeWindow)
 			spec.EndTime = at.Add(detailTimeWindow)
 		}

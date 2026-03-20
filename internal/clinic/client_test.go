@@ -23,7 +23,7 @@ func TestBuildWhereClauseIncludesPartitionsAndFilters(t *testing.T) {
 
 	where := buildWhereClause(spec)
 	wantSnippets := []string{
-		`"date" IN ('20260320','20260321')`,
+		`date IN ('20260320','20260321')`,
 		`digest = 'digest-1'`,
 		`db = 'app'`,
 		`instance = 'tidb-0'`,
@@ -46,10 +46,10 @@ func TestFetchSlowQueryContext(t *testing.T) {
 			_ = json.Unmarshal(body, &payload)
 			sql, _ := payload["sql"].(string)
 			if strings.Contains(sql, "COUNT(*) AS total_queries") {
-				io.WriteString(w, `{"columns":["total_queries","unique_digests","avg_query_time","max_query_time"],"rows":[[24,3,1.25,7.5]]}`)
+				io.WriteString(w, `{"columns":["total_queries","avg_query_time","max_query_time"],"rows":[[24,1.25,7.5]]}`)
 				return
 			}
-			io.WriteString(w, `{"columns":["digest","exec_count","avg_query_time","max_query_time","max_total_keys","max_process_keys","max_result_rows","max_mem_bytes","max_disk_bytes","sample_db","sample_instance","sample_indexes","sample_sql"],"rows":[["digest-1",12,1.2,7.5,1000,800,10,2048,0,"app","tidb-0","idx_a","select * from t where a = 1"]]}`)
+			io.WriteString(w, `{"columns":["digest","exec_count","avg_query_time","max_query_time","max_result_rows","max_mem_bytes","max_disk_bytes","sample_db","sample_instance","sample_indexes","sample_sql"],"rows":[["digest-1",12,1.2,7.5,10,2048,0,"app","tidb-0","idx_a","select * from t where a = 1"]]}`)
 		default:
 			http.NotFound(w, r)
 		}
@@ -77,6 +77,53 @@ func TestFetchSlowQueryContext(t *testing.T) {
 	}
 	if result.NoRows {
 		t.Fatalf("expected NoRows=false")
+	}
+}
+
+func TestFetchSlowQueryContextForDetailQuery(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch {
+		case r.Method == http.MethodGet && r.URL.Path == "/clinic/api/v1/dashboard/clusters":
+			io.WriteString(w, `{"items":[{"clusterID":"123","clusterName":"prod-a","tenantName":"Acme","clusterDeployTypeV2":"premium"}]}`)
+		case r.Method == http.MethodPost && r.URL.Path == "/data-proxy/query":
+			body, _ := io.ReadAll(r.Body)
+			var payload map[string]any
+			_ = json.Unmarshal(body, &payload)
+			sql, _ := payload["sql"].(string)
+			if !strings.Contains(sql, "ORDER BY time DESC") {
+				t.Fatalf("expected detail SQL, got %s", sql)
+			}
+			io.WriteString(w, `{"columns":["time","digest","query_time","parse_time","compile_time","cop_time","process_time","wait_time","total_keys","process_keys","result_rows","mem_max","disk_max","db","instance","index_names","query"],"rows":[[1773973859.727374,"digest-1",7.5,0.1,0.2,2.5,1.5,0.3,1000,800,10,2048,0,"app","tidb-0","idx_a","select * from t where a = 1"]]}`)
+		default:
+			http.NotFound(w, r)
+		}
+	}))
+	defer server.Close()
+
+	client := NewClient("token", 5*time.Second)
+	client.APIBaseURL = server.URL + "/clinic/api/v1"
+	client.DataProxyBase = server.URL
+
+	result, err := client.FetchSlowQueryContext(context.Background(), LinkSpec{
+		RawURL:     "https://clinic.pingcap.com/#/slow_query/detail?clusterId=123&digest=digest-1",
+		ClusterID:  "123",
+		StartTime:  time.Date(2026, 3, 20, 10, 0, 0, 0, time.UTC),
+		EndTime:    time.Date(2026, 3, 20, 10, 10, 0, 0, time.UTC),
+		Digest:     "digest-1",
+		IsDetail:   true,
+		AnchorTime: time.Date(2026, 3, 20, 10, 5, 0, 0, time.UTC),
+	})
+	if err != nil {
+		t.Fatalf("FetchSlowQueryContext returned error: %v", err)
+	}
+	if !result.IsDetail {
+		t.Fatalf("expected detail mode")
+	}
+	if len(result.DetailRows) != 1 || len(result.TopDigests) != 0 {
+		t.Fatalf("unexpected detail query result: %+v", result)
+	}
+	if result.Summary.TotalQueries != 1 || result.Summary.UniqueDigests != 1 {
+		t.Fatalf("unexpected detail summary: %+v", result.Summary)
 	}
 }
 

@@ -102,6 +102,7 @@ func (p *Prefetcher) Enrich(ctx context.Context, question string, runtime codex.
 		Digest:      analysis.Digest,
 		Database:    analysis.Database,
 		Instance:    analysis.Instance,
+		IsDetail:    analysis.IsDetail,
 		Summary: codex.ClinicSummary{
 			TotalQueries:  analysis.Summary.TotalQueries,
 			UniqueDigests: analysis.Summary.UniqueDigests,
@@ -109,6 +110,27 @@ func (p *Prefetcher) Enrich(ctx context.Context, question string, runtime codex.
 			MaxQueryTime:  analysis.Summary.MaxQueryTime,
 		},
 		NoRows: analysis.NoRows,
+	}
+	for _, row := range analysis.DetailRows {
+		runtime.Clinic.DetailRows = append(runtime.Clinic.DetailRows, codex.ClinicDetailRow{
+			TimeUnix:    row.TimeUnix,
+			Digest:      row.Digest,
+			QueryTime:   row.QueryTime,
+			ParseTime:   row.ParseTime,
+			CompileTime: row.CompileTime,
+			CopTime:     row.CopTime,
+			ProcessTime: row.ProcessTime,
+			WaitTime:    row.WaitTime,
+			TotalKeys:   row.TotalKeys,
+			ProcessKeys: row.ProcessKeys,
+			ResultRows:  row.ResultRows,
+			MemBytes:    row.MemBytes,
+			DiskBytes:   row.DiskBytes,
+			Database:    row.Database,
+			Instance:    row.Instance,
+			Indexes:     row.Indexes,
+			Query:       row.Query,
+		})
 	}
 	for _, item := range analysis.TopDigests {
 		runtime.Clinic.TopDigests = append(runtime.Clinic.TopDigests, codex.ClinicDigestSummary{

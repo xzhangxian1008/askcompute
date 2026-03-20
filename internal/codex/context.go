@@ -18,8 +18,10 @@ type ClinicContext struct {
 	Digest      string
 	Database    string
 	Instance    string
+	IsDetail    bool
 	Summary     ClinicSummary
 	TopDigests  []ClinicDigestSummary
+	DetailRows  []ClinicDetailRow
 	NoRows      bool
 }
 
@@ -44,4 +46,24 @@ type ClinicDigestSummary struct {
 	SampleInstance string
 	SampleIndexes  string
 	SampleSQL      string
+}
+
+type ClinicDetailRow struct {
+	TimeUnix    float64
+	Digest      string
+	QueryTime   float64
+	ParseTime   float64
+	CompileTime float64
+	CopTime     float64
+	ProcessTime float64
+	WaitTime    float64
+	TotalKeys   int64
+	ProcessKeys int64
+	ResultRows  int64
+	MemBytes    int64
+	DiskBytes   int64
+	Database    string
+	Instance    string
+	Indexes     string
+	Query       string
 }

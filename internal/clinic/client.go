@@ -37,8 +37,10 @@ type AnalysisContext struct {
 	Digest      string
 	Database    string
 	Instance    string
+	IsDetail    bool
 	Summary     Summary
 	TopDigests  []DigestSummary
+	DetailRows  []SlowQueryDetailRow
 	NoRows      bool
 }
 
@@ -47,6 +49,26 @@ type Summary struct {
 	UniqueDigests int64
 	AvgQueryTime  float64
 	MaxQueryTime  float64
+}
+
+type SlowQueryDetailRow struct {
+	TimeUnix    float64
+	Digest      string
+	QueryTime   float64
+	ParseTime   float64
+	CompileTime float64
+	CopTime     float64
+	ProcessTime float64
+	WaitTime    float64
+	TotalKeys   int64
+	ProcessKeys int64
+	ResultRows  int64
+	MemBytes    int64
+	DiskBytes   int64
+	Database    string
+	Instance    string
+	Indexes     string
+	Query       string
 }
 
 type DigestSummary struct {
@@ -80,13 +102,26 @@ func (c *Client) FetchSlowQueryContext(ctx context.Context, spec LinkSpec) (*Ana
 		return nil, err
 	}
 
-	summary, err := c.querySummary(ctx, spec)
-	if err != nil {
-		return nil, err
-	}
-	topDigests, err := c.queryTopDigests(ctx, spec)
-	if err != nil {
-		return nil, err
+	var (
+		summary    Summary
+		topDigests []DigestSummary
+		detailRows []SlowQueryDetailRow
+	)
+	if spec.IsDetail {
+		detailRows, err = c.queryDetailRows(ctx, spec)
+		if err != nil {
+			return nil, err
+		}
+		summary = summarizeDetailRows(detailRows)
+	} else {
+		summary, err = c.querySummary(ctx, spec)
+		if err != nil {
+			return nil, err
+		}
+		topDigests, err = c.queryTopDigests(ctx, spec)
+		if err != nil {
+			return nil, err
+		}
 	}
 
 	return &AnalysisContext{
@@ -100,9 +135,11 @@ func (c *Client) FetchSlowQueryContext(ctx context.Context, spec LinkSpec) (*Ana
 		Digest:      spec.Digest,
 		Database:    spec.Database,
 		Instance:    spec.Instance,
+		IsDetail:    spec.IsDetail,
 		Summary:     summary,
 		TopDigests:  topDigests,
-		NoRows:      summary.TotalQueries == 0,
+		DetailRows:  detailRows,
+		NoRows:      summary.TotalQueries == 0 && len(detailRows) == 0,
 	}, nil
 }
 
@@ -164,6 +201,43 @@ func (c *Client) querySummary(ctx context.Context, spec LinkSpec) (Summary, erro
 	}, nil
 }
 
+func (c *Client) queryDetailRows(ctx context.Context, spec LinkSpec) ([]SlowQueryDetailRow, error) {
+	rows, err := c.runDataProxyQuery(ctx, spec.ClusterID, buildDetailRowsSQL(spec))
+	if err != nil {
+		return nil, err
+	}
+
+	items := make([]SlowQueryDetailRow, 0, len(rows))
+	for _, row := range rows {
+		items = append(items, SlowQueryDetailRow{
+			TimeUnix:    float64Value(row["time"]),
+			Digest:      stringValue(row["digest"]),
+			QueryTime:   float64Value(row["query_time"]),
+			ParseTime:   float64Value(row["parse_time"]),
+			CompileTime: float64Value(row["compile_time"]),
+			CopTime:     float64Value(row["cop_time"]),
+			ProcessTime: float64Value(row["process_time"]),
+			WaitTime:    float64Value(row["wait_time"]),
+			TotalKeys:   int64Value(row["total_keys"]),
+			ProcessKeys: int64Value(row["process_keys"]),
+			ResultRows:  int64Value(row["result_rows"]),
+			MemBytes:    int64Value(row["mem_max"]),
+			DiskBytes:   int64Value(row["disk_max"]),
+			Database:    stringValue(row["db"]),
+			Instance:    stringValue(row["instance"]),
+			Indexes:     stringValue(row["index_names"]),
+			Query:       stringValue(row["query"]),
+		})
+	}
+	sort.SliceStable(items, func(i, j int) bool {
+		if items[i].TimeUnix == items[j].TimeUnix {
+			return items[i].QueryTime > items[j].QueryTime
+		}
+		return items[i].TimeUnix > items[j].TimeUnix
+	})
+	return items, nil
+}
+
 func (c *Client) queryTopDigests(ctx context.Context, spec LinkSpec) ([]DigestSummary, error) {
 	rows, err := c.runDataProxyQuery(ctx, spec.ClusterID, buildTopDigestsSQL(spec))
 	if err != nil {
@@ -177,8 +251,6 @@ func (c *Client) queryTopDigests(ctx context.Context, spec LinkSpec) ([]DigestSu
 			ExecutionCount: int64Value(row["exec_count"]),
 			AvgQueryTime:   float64Value(row["avg_query_time"]),
 			MaxQueryTime:   float64Value(row["max_query_time"]),
-			MaxTotalKeys:   int64Value(row["max_total_keys"]),
-			MaxProcessKeys: int64Value(row["max_process_keys"]),
 			MaxResultRows:  int64Value(row["max_result_rows"]),
 			MaxMemBytes:    int64Value(row["max_mem_bytes"]),
 			MaxDiskBytes:   int64Value(row["max_disk_bytes"]),
@@ -273,11 +345,35 @@ func (c *Client) doJSON(ctx context.Context, method, endpoint string, params url
 func buildSummarySQL(spec LinkSpec) string {
 	return fmt.Sprintf(`SELECT
   COUNT(*) AS total_queries,
-  COUNT(DISTINCT digest) AS unique_digests,
   COALESCE(AVG(query_time), 0) AS avg_query_time,
   COALESCE(MAX(query_time), 0) AS max_query_time
 FROM "clinic_data_proxy"."slow_query_logs"
 WHERE %s`, buildWhereClause(spec))
+}
+
+func buildDetailRowsSQL(spec LinkSpec) string {
+	return fmt.Sprintf(`SELECT
+  time,
+  digest,
+  query_time,
+  parse_time,
+  compile_time,
+  cop_time,
+  process_time,
+  wait_time,
+  total_keys,
+  process_keys,
+  result_rows,
+  mem_max,
+  disk_max,
+  db,
+  instance,
+  index_names,
+  query
+FROM "clinic_data_proxy"."slow_query_logs"
+WHERE %s
+ORDER BY time DESC, query_time DESC
+LIMIT 10`, buildWhereClause(spec))
 }
 
 func buildTopDigestsSQL(spec LinkSpec) string {
@@ -286,8 +382,6 @@ func buildTopDigestsSQL(spec LinkSpec) string {
   COUNT(*) AS exec_count,
   COALESCE(AVG(query_time), 0) AS avg_query_time,
   COALESCE(MAX(query_time), 0) AS max_query_time,
-  COALESCE(MAX(TRY_CAST(total_keys AS BIGINT)), 0) AS max_total_keys,
-  COALESCE(MAX(TRY_CAST(process_keys AS BIGINT)), 0) AS max_process_keys,
   COALESCE(MAX(result_rows), 0) AS max_result_rows,
   COALESCE(MAX(mem_max), 0) AS max_mem_bytes,
   COALESCE(MAX(disk_max), 0) AS max_disk_bytes,
@@ -310,7 +404,7 @@ func buildWhereClause(spec LinkSpec) string {
 	}
 
 	conditions := []string{
-		fmt.Sprintf(`"date" IN (%s)`, strings.Join(quotedDates, ",")),
+		fmt.Sprintf(`date IN (%s)`, strings.Join(quotedDates, ",")),
 		fmt.Sprintf(`time >= %.3f`, float64(spec.StartTime.UTC().UnixMilli())/1000),
 		fmt.Sprintf(`time <= %.3f`, float64(spec.EndTime.UTC().UnixMilli())/1000),
 	}
@@ -347,6 +441,27 @@ func firstNonEmpty(values ...string) string {
 		}
 	}
 	return ""
+}
+
+func summarizeDetailRows(rows []SlowQueryDetailRow) Summary {
+	if len(rows) == 0 {
+		return Summary{}
+	}
+
+	summary := Summary{
+		UniqueDigests: 1,
+		MaxQueryTime:  rows[0].QueryTime,
+	}
+	var total float64
+	for _, row := range rows {
+		summary.TotalQueries++
+		total += row.QueryTime
+		if row.QueryTime > summary.MaxQueryTime {
+			summary.MaxQueryTime = row.QueryTime
+		}
+	}
+	summary.AvgQueryTime = total / float64(len(rows))
+	return summary
 }
 
 func stringValue(v any) string {

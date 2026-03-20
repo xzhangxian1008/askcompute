@@ -92,6 +92,9 @@ func TestParseSlowQueryDetailLinkUsesTimestampWindow(t *testing.T) {
 	if spec.Digest != "abc" {
 		t.Fatalf("digest = %q, want abc", spec.Digest)
 	}
+	if !spec.IsDetail {
+		t.Fatalf("expected detail route")
+	}
 	if got := spec.EndTime.Sub(spec.StartTime); got != 2*detailTimeWindow {
 		t.Fatalf("time range = %s, want %s", got, 2*detailTimeWindow)
 	}
