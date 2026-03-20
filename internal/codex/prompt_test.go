@@ -43,6 +43,17 @@ func TestBuildInitialPromptIncludesAttachmentContext(t *testing.T) {
 
 func TestBuildInitialPromptIncludesClinicContext(t *testing.T) {
 	prompt := BuildInitialPrompt("base prompt", "", "analyze this Clinic link", RuntimeContext{
+		ClinicLibrary: &ClinicLibraryContext{
+			RootDir:        "/tmp/clinic-user-a",
+			ActiveItemName: "clinic_20260320_100000_123_digest",
+			Items: []ClinicLibraryItem{{
+				Name:      "clinic_20260320_100000_123_digest",
+				SavedAt:   time.Date(2026, 3, 20, 10, 0, 0, 0, time.UTC),
+				ClusterID: "123",
+				Digest:    "digest-1",
+				IsDetail:  true,
+			}},
+		},
 		Clinic: &ClinicContext{
 			SourceURL:   "https://clinic.pingcap.com/#/slowquery?clusterId=123",
 			ClusterID:   "123",
@@ -72,6 +83,9 @@ func TestBuildInitialPromptIncludesClinicContext(t *testing.T) {
 	})
 
 	wantSnippets := []string{
+		"The current user's saved Clinic slow-query library is stored under: /tmp/clinic-user-a",
+		"Current active Clinic entry: clinic_20260320_100000_123_digest",
+		"clinic_20260320_100000_123_digest [detail] saved_at=2026-03-20T10:00:00Z cluster_id=123 digest=digest-1",
 		"Clinic slow query link detected and prefetched by the relay",
 		"cluster_id=123",
 		"cluster_name=prod-a",
@@ -83,6 +97,18 @@ func TestBuildInitialPromptIncludesClinicContext(t *testing.T) {
 		if !strings.Contains(prompt, snippet) {
 			t.Fatalf("prompt missing %q:\n%s", snippet, prompt)
 		}
+	}
+}
+
+func TestBuildResumePromptIncludesEmptyClinicLibrary(t *testing.T) {
+	prompt := BuildResumePrompt("what next", RuntimeContext{
+		ClinicLibrary: &ClinicLibraryContext{
+			RootDir: "/tmp/clinic-user-a",
+		},
+	})
+
+	if !strings.Contains(prompt, "Current Clinic entries: none.") {
+		t.Fatalf("prompt missing empty clinic-library marker:\n%s", prompt)
 	}
 }
 

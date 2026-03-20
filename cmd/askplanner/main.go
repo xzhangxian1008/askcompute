@@ -33,7 +33,10 @@ func main() {
 	if err != nil {
 		log.Fatalf("build codex responder: %v", err)
 	}
-	prefetcher := clinic.NewPrefetcher(cfg)
+	prefetcher, err := clinic.NewPrefetcher(cfg)
+	if err != nil {
+		log.Fatalf("build clinic prefetcher: %v", err)
+	}
 
 	fmt.Printf("askplanner v2 (backend: codex-cli, model: %s)\n", cfg.CodexModel)
 	fmt.Println("Type your question, or 'quit' to exit. Use 'reset' to start a new session.")
@@ -41,6 +44,7 @@ func main() {
 
 	scanner := bufio.NewScanner(os.Stdin)
 	const conversationKey = "cli:default"
+	const clinicUserKey = "cli_default"
 	for {
 		fmt.Print("> ")
 		if !scanner.Scan() {
@@ -66,7 +70,7 @@ func main() {
 		}
 
 		fmt.Println()
-		runtimeCtx, err := prefetcher.Enrich(ctx, question, codex.RuntimeContext{})
+		runtimeCtx, err := prefetcher.Enrich(ctx, clinicUserKey, question, codex.RuntimeContext{})
 		if err != nil {
 			if msg := clinic.UserFacingMessage(err); msg != "" {
 				log.Printf("[askplanner] clinic prefetch user-visible error: %v", err)

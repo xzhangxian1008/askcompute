@@ -46,6 +46,7 @@ type preparedReply struct {
 	skipCodex       bool
 	attachmentCtx   codex.AttachmentContext
 	conversationKey string
+	userKey         string
 }
 
 type uploadCommand struct {
@@ -108,7 +109,10 @@ func main() {
 	if err != nil {
 		log.Fatalf("build codex responder: %v", err)
 	}
-	prefetcher := clinic.NewPrefetcher(cfg)
+	prefetcher, err := clinic.NewPrefetcher(cfg)
+	if err != nil {
+		log.Fatalf("build clinic prefetcher: %v", err)
+	}
 	attachmentManager, err := attachments.NewManager(cfg.FeishuFileDir, cfg.FeishuUserFileMaxItems)
 	if err != nil {
 		log.Fatalf("build attachment manager: %v", err)
@@ -186,7 +190,7 @@ func handleEvent(ctx context.Context, apiClient *lark.Client, responder *codex.R
 	log.Printf("[larkbot] answering question: %q (message_id=%s, conversation=%s)",
 		question, extractMessageID(event), prepared.conversationKey)
 
-	runtimeCtx, err := prefetcher.Enrich(ctx, question, codex.RuntimeContext{
+	runtimeCtx, err := prefetcher.Enrich(ctx, prepared.userKey, question, codex.RuntimeContext{
 		Attachment: prepared.attachmentCtx,
 	})
 	if err != nil {
@@ -232,6 +236,7 @@ func prepareReply(ctx context.Context, apiClient *lark.Client, manager *attachme
 					directReply:     summary,
 					skipCodex:       true,
 					conversationKey: conversationKey,
+					userKey:         userKey,
 				}, nil
 			}
 			return &preparedReply{
@@ -239,6 +244,7 @@ func prepareReply(ctx context.Context, apiClient *lark.Client, manager *attachme
 				prefix:          summary,
 				attachmentCtx:   attachmentCtx,
 				conversationKey: conversationKey,
+				userKey:         userKey,
 			}, nil
 		}
 
@@ -250,6 +256,7 @@ func prepareReply(ctx context.Context, apiClient *lark.Client, manager *attachme
 			question:        text,
 			attachmentCtx:   attachmentCtx,
 			conversationKey: conversationKey,
+			userKey:         userKey,
 		}, nil
 	case "file", "image":
 		if isGroupChat(event) {
@@ -263,6 +270,7 @@ func prepareReply(ctx context.Context, apiClient *lark.Client, manager *attachme
 			directReply:     summary,
 			skipCodex:       true,
 			conversationKey: conversationKey,
+			userKey:         userKey,
 		}, nil
 	default:
 		return nil, fmt.Errorf("unsupported message type: %s", extractMessageType(event))

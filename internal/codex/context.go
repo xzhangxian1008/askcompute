@@ -3,8 +3,26 @@ package codex
 import "time"
 
 type RuntimeContext struct {
-	Attachment AttachmentContext
-	Clinic     *ClinicContext
+	Attachment    AttachmentContext
+	ClinicLibrary *ClinicLibraryContext
+	Clinic        *ClinicContext
+}
+
+type ClinicLibraryContext struct {
+	RootDir        string
+	ActiveItemName string
+	Items          []ClinicLibraryItem
+}
+
+type ClinicLibraryItem struct {
+	Name        string
+	SavedAt     time.Time
+	ClusterID   string
+	ClusterName string
+	Digest      string
+	Database    string
+	Instance    string
+	IsDetail    bool
 }
 
 type ClinicContext struct {

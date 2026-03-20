@@ -46,6 +46,7 @@ func BuildInitialPrompt(normalizedPrompt, summary, question string, runtime Runt
 	sb.WriteString("- You are serving a TiDB query tuning chat relay backed by Codex CLI.\n")
 	sb.WriteString("- Answer the user's latest message directly.\n")
 	writeAttachmentContext(&sb, runtime.Attachment)
+	writeClinicLibraryContext(&sb, runtime.ClinicLibrary)
 	writeClinicContext(&sb, runtime.Clinic)
 	if strings.TrimSpace(summary) != "" {
 		sb.WriteString("\n## Conversation Summary\n")
@@ -62,6 +63,7 @@ func BuildResumePrompt(question string, runtime RuntimeContext) string {
 	var sb strings.Builder
 	sb.WriteString("Continue the existing TiDB query tuning conversation.\n")
 	writeAttachmentContext(&sb, runtime.Attachment)
+	writeClinicLibraryContext(&sb, runtime.ClinicLibrary)
 	writeClinicContext(&sb, runtime.Clinic)
 	sb.WriteString("\nNew user message:\n")
 	sb.WriteString(strings.TrimSpace(question))
@@ -110,6 +112,71 @@ func writeAttachmentContext(sb *strings.Builder, attachment AttachmentContext) {
 		if original := strings.TrimSpace(item.OriginalName); original != "" && original != item.Name {
 			sb.WriteString(" original_name=")
 			sb.WriteString(original)
+		}
+		sb.WriteByte('\n')
+	}
+}
+
+func writeClinicLibraryContext(sb *strings.Builder, library *ClinicLibraryContext) {
+	if library == nil || strings.TrimSpace(library.RootDir) == "" {
+		return
+	}
+
+	sb.WriteString("- The current user's saved Clinic slow-query library is stored under: ")
+	sb.WriteString(strings.TrimSpace(library.RootDir))
+	sb.WriteString("\n")
+	sb.WriteString("- Each Clinic entry is a top-level directory containing `metadata.json`, `analysis.json`, and `summary.md`.\n")
+	sb.WriteString("- If the user asks a follow-up question about Clinic slow-query data without sending a new link, default to the active Clinic entry below.\n")
+	sb.WriteString("- If the user clearly refers to another visible Clinic entry, inspect that entry instead. If you still cannot tell which entry they mean, do not guess; ask the user which Clinic entry to use.\n")
+
+	items := append([]ClinicLibraryItem(nil), library.Items...)
+	sort.Slice(items, func(i, j int) bool {
+		if items[i].SavedAt.Equal(items[j].SavedAt) {
+			return items[i].Name < items[j].Name
+		}
+		return items[i].SavedAt.After(items[j].SavedAt)
+	})
+	if len(items) == 0 {
+		sb.WriteString("- Current Clinic entries: none.\n")
+		return
+	}
+	if active := strings.TrimSpace(library.ActiveItemName); active != "" {
+		sb.WriteString("- Current active Clinic entry: ")
+		sb.WriteString(active)
+		sb.WriteByte('\n')
+	}
+	sb.WriteString("- Current Clinic entries (newest first):\n")
+	for _, item := range items {
+		sb.WriteString("  - ")
+		sb.WriteString(item.Name)
+		if item.IsDetail {
+			sb.WriteString(" [detail]")
+		} else {
+			sb.WriteString(" [list]")
+		}
+		if !item.SavedAt.IsZero() {
+			sb.WriteString(" saved_at=")
+			sb.WriteString(item.SavedAt.Format(time.RFC3339))
+		}
+		if item.ClusterID != "" {
+			sb.WriteString(" cluster_id=")
+			sb.WriteString(item.ClusterID)
+		}
+		if item.ClusterName != "" {
+			sb.WriteString(" cluster_name=")
+			sb.WriteString(item.ClusterName)
+		}
+		if item.Digest != "" {
+			sb.WriteString(" digest=")
+			sb.WriteString(item.Digest)
+		}
+		if item.Database != "" {
+			sb.WriteString(" db=")
+			sb.WriteString(item.Database)
+		}
+		if item.Instance != "" {
+			sb.WriteString(" instance=")
+			sb.WriteString(item.Instance)
 		}
 		sb.WriteByte('\n')
 	}

@@ -2,12 +2,14 @@ package clinic
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"log"
 	"strings"
 	"time"
 
+	"lab/askplanner/internal/clinicstore"
 	"lab/askplanner/internal/codex"
 	"lab/askplanner/internal/config"
 )
@@ -15,7 +17,10 @@ import (
 type Prefetcher struct {
 	enabled bool
 	client  *Client
+	store   *clinicstore.Manager
 }
+
+const promptClinicLibraryLimit = 10
 
 type UserError struct {
 	Message string
@@ -29,20 +34,34 @@ func (e *UserError) Error() string {
 	return fmt.Sprintf("%s: %v", e.Message, e.Cause)
 }
 
-func NewPrefetcher(cfg *config.Config) *Prefetcher {
+func NewPrefetcher(cfg *config.Config) (*Prefetcher, error) {
 	timeout := time.Duration(cfg.ClinicHTTPTimeoutSec) * time.Second
 	if timeout <= 0 {
 		timeout = 15 * time.Second
 	}
+	var store *clinicstore.Manager
+	var err error
+	if cfg.ClinicEnableAutoSlowQuery {
+		store, err = clinicstore.NewManager(cfg.ClinicStoreDir, cfg.ClinicStoreMaxItems)
+		if err != nil {
+			return nil, err
+		}
+	}
 	return &Prefetcher{
 		enabled: cfg.ClinicEnableAutoSlowQuery,
 		client:  NewClient(cfg.ClinicAPIKey, timeout),
-	}
+		store:   store,
+	}, nil
 }
 
-func (p *Prefetcher) Enrich(ctx context.Context, question string, runtime codex.RuntimeContext) (codex.RuntimeContext, error) {
+func (p *Prefetcher) Enrich(ctx context.Context, userKey, question string, runtime codex.RuntimeContext) (codex.RuntimeContext, error) {
 	if !p.enabled {
 		return runtime, nil
+	}
+
+	runtime, loadErr := p.attachLatestStored(userKey, runtime)
+	if loadErr != nil {
+		return runtime, loadErr
 	}
 
 	spec, matched, err := ParseSlowQueryLink(question)
@@ -90,8 +109,116 @@ func (p *Prefetcher) Enrich(ctx context.Context, question string, runtime codex.
 		analysis.Summary.UniqueDigests,
 		len(analysis.TopDigests),
 	)
+	runtime.Clinic = toClinicRuntimeContext(analysis)
 
-	runtime.Clinic = &codex.ClinicContext{
+	if storeErr := p.saveAnalysis(userKey, analysis); storeErr != nil {
+		log.Printf("[clinic] saved analysis fetch succeeded but local persistence failed for cluster_id=%s: %v", analysis.ClusterID, storeErr)
+		if runtime.ClinicLibrary != nil {
+			runtime.ClinicLibrary.ActiveItemName = ""
+		}
+		return runtime, nil
+	}
+	runtime, err = p.attachLatestStored(userKey, runtime)
+	if err != nil {
+		return runtime, err
+	}
+	return runtime, nil
+}
+
+func (p *Prefetcher) saveAnalysis(userKey string, analysis *AnalysisContext) error {
+	if strings.TrimSpace(userKey) == "" || analysis == nil {
+		return nil
+	}
+	payload, err := json.MarshalIndent(analysis, "", "  ")
+	if err != nil {
+		return fmt.Errorf("marshal Clinic analysis: %w", err)
+	}
+	_, err = p.store.Save(clinicstore.SaveRequest{
+		UserKey:         userKey,
+		AnalysisJSON:    payload,
+		SummaryMarkdown: BuildStoredSummary(analysis),
+		Metadata: clinicstore.Metadata{
+			SourceURL:   analysis.SourceURL,
+			ClusterID:   analysis.ClusterID,
+			ClusterName: analysis.ClusterName,
+			OrgName:     analysis.OrgName,
+			DeployType:  analysis.DeployType,
+			StartTime:   analysis.StartTime.UTC(),
+			EndTime:     analysis.EndTime.UTC(),
+			Digest:      analysis.Digest,
+			Database:    analysis.Database,
+			Instance:    analysis.Instance,
+			IsDetail:    analysis.IsDetail,
+			SavedAt:     time.Now().UTC(),
+		},
+	})
+	if err != nil {
+		return fmt.Errorf("save Clinic analysis: %w", err)
+	}
+	return nil
+}
+
+func (p *Prefetcher) attachLatestStored(userKey string, runtime codex.RuntimeContext) (codex.RuntimeContext, error) {
+	if strings.TrimSpace(userKey) == "" {
+		return runtime, nil
+	}
+
+	library, err := p.store.Snapshot(userKey)
+	if err != nil {
+		return runtime, fmt.Errorf("load Clinic library snapshot: %w", err)
+	}
+	runtime.ClinicLibrary = toClinicLibraryContext(library)
+
+	entry, ok, err := p.store.Latest(userKey)
+	if err != nil {
+		return runtime, fmt.Errorf("load latest Clinic entry: %w", err)
+	}
+	if !ok {
+		runtime.Clinic = nil
+		return runtime, nil
+	}
+	runtime.ClinicLibrary.ActiveItemName = entry.Item.Name
+
+	var analysis AnalysisContext
+	if err := json.Unmarshal(entry.AnalysisJSON, &analysis); err != nil {
+		return runtime, fmt.Errorf("decode latest Clinic entry %s: %w", entry.Item.Name, err)
+	}
+	runtime.Clinic = toClinicRuntimeContext(&analysis)
+	return runtime, nil
+}
+
+func toClinicLibraryContext(library clinicstore.Library) *codex.ClinicLibraryContext {
+	if strings.TrimSpace(library.RootDir) == "" {
+		return nil
+	}
+	items := library.Items
+	if len(items) > promptClinicLibraryLimit {
+		items = items[:promptClinicLibraryLimit]
+	}
+	ctxItems := make([]codex.ClinicLibraryItem, 0, len(items))
+	for _, item := range items {
+		ctxItems = append(ctxItems, codex.ClinicLibraryItem{
+			Name:        item.Name,
+			SavedAt:     item.SavedAt,
+			ClusterID:   item.ClusterID,
+			ClusterName: item.ClusterName,
+			Digest:      item.Digest,
+			Database:    item.Database,
+			Instance:    item.Instance,
+			IsDetail:    item.IsDetail,
+		})
+	}
+	return &codex.ClinicLibraryContext{
+		RootDir: library.RootDir,
+		Items:   ctxItems,
+	}
+}
+
+func toClinicRuntimeContext(analysis *AnalysisContext) *codex.ClinicContext {
+	if analysis == nil {
+		return nil
+	}
+	ctx := &codex.ClinicContext{
 		SourceURL:   analysis.SourceURL,
 		ClusterID:   analysis.ClusterID,
 		ClusterName: analysis.ClusterName,
@@ -112,7 +239,7 @@ func (p *Prefetcher) Enrich(ctx context.Context, question string, runtime codex.
 		NoRows: analysis.NoRows,
 	}
 	for _, row := range analysis.DetailRows {
-		runtime.Clinic.DetailRows = append(runtime.Clinic.DetailRows, codex.ClinicDetailRow{
+		ctx.DetailRows = append(ctx.DetailRows, codex.ClinicDetailRow{
 			TimeUnix:    row.TimeUnix,
 			Digest:      row.Digest,
 			QueryTime:   row.QueryTime,
@@ -133,7 +260,7 @@ func (p *Prefetcher) Enrich(ctx context.Context, question string, runtime codex.
 		})
 	}
 	for _, item := range analysis.TopDigests {
-		runtime.Clinic.TopDigests = append(runtime.Clinic.TopDigests, codex.ClinicDigestSummary{
+		ctx.TopDigests = append(ctx.TopDigests, codex.ClinicDigestSummary{
 			Digest:         item.Digest,
 			ExecutionCount: item.ExecutionCount,
 			AvgQueryTime:   item.AvgQueryTime,
@@ -149,7 +276,7 @@ func (p *Prefetcher) Enrich(ctx context.Context, question string, runtime codex.
 			SampleSQL:      item.SampleSQL,
 		})
 	}
-	return runtime, nil
+	return ctx
 }
 
 func UserFacingMessage(err error) string {

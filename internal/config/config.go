@@ -30,6 +30,8 @@ type Config struct {
 	ClinicEnableAutoSlowQuery bool
 	ClinicAPIKey              string
 	ClinicHTTPTimeoutSec      int
+	ClinicStoreDir            string
+	ClinicStoreMaxItems       int
 
 	// Logging
 	LogFile string // absolute path
@@ -63,6 +65,8 @@ func Load() (*Config, error) {
 		ClinicEnableAutoSlowQuery: envAsBool("CLINIC_ENABLE_AUTO_SLOWQUERY", false),
 		ClinicAPIKey:              strings.TrimSpace(os.Getenv("CLINIC_API_KEY")),
 		ClinicHTTPTimeoutSec:      envAsInt("CLINIC_HTTP_TIMEOUT_SEC", 15),
+		ClinicStoreDir:            resolvePath(projectRoot, envOrDefault("CLINIC_STORE_DIR", ".askplanner/clinic-slowqueries")),
+		ClinicStoreMaxItems:       envAsInt("CLINIC_STORE_MAX_ITEMS", 50),
 		LogFile:                   resolvePath(projectRoot, envOrDefault("LOG_FILE", ".askplanner/askplanner.log")),
 		FeishuAppID:               os.Getenv("FEISHU_APP_ID"),
 		FeishuAppSecret:           os.Getenv("FEISHU_APP_SECRET"),
