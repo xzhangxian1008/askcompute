@@ -26,6 +26,11 @@ type Config struct {
 	CodexSessionTTLHours int
 	CodexTimeoutSec      int
 
+	// Clinic
+	ClinicEnableAutoSlowQuery bool
+	ClinicAPIKey              string
+	ClinicHTTPTimeoutSec      int
+
 	// Logging
 	LogFile string // absolute path
 
@@ -45,23 +50,26 @@ func Load() (*Config, error) {
 	}
 
 	return &Config{
-		ProjectRoot:             projectRoot,
-		PromptFile:              resolvePath(projectRoot, envOrDefault("PROMPT_FILE", "prompt")),
-		CodexBin:                envOrDefault("CODEX_BIN", "codex"),
-		CodexModel:              envOrDefault("CODEX_MODEL", "gpt-5.3-codex"),
-		CodexReasoningEffort:    envOrDefault("CODEX_REASONING_EFFORT", "medium"),
-		CodexSandbox:            envOrDefault("CODEX_SANDBOX", "read-only"),
-		CodexSessionStore:       resolvePath(projectRoot, envOrDefault("CODEX_SESSION_STORE", ".askplanner/sessions.json")),
-		CodexMaxTurns:           envAsInt("CODEX_MAX_TURNS", 30),
-		CodexSessionTTLHours:    envAsInt("CODEX_SESSION_TTL_HOURS", 24),
-		CodexTimeoutSec:         envAsInt("CODEX_TIMEOUT_SEC", 120),
-		LogFile:                 resolvePath(projectRoot, envOrDefault("LOG_FILE", ".askplanner/askplanner.log")),
-		FeishuAppID:             os.Getenv("FEISHU_APP_ID"),
-		FeishuAppSecret:         os.Getenv("FEISHU_APP_SECRET"),
-		FeishuBotName:           strings.ToLower(strings.TrimSpace(envOrDefault("FEISHU_BOT_NAME", "askplanner"))),
-		FeishuDedupTimeoutInMin: envAsInt("FEISHU_DEDUP_MESSAGE_TIMEOUT_IN_MIN", 3600),
-		FeishuFileDir:           resolvePath(projectRoot, envOrDefault("FEISHU_FILE_DIR", ".askplanner/lark-files")),
-		FeishuUserFileMaxItems:  envAsInt("FEISHU_USER_FILE_MAX_ITEMS", 100),
+		ProjectRoot:               projectRoot,
+		PromptFile:                resolvePath(projectRoot, envOrDefault("PROMPT_FILE", "prompt")),
+		CodexBin:                  envOrDefault("CODEX_BIN", "codex"),
+		CodexModel:                envOrDefault("CODEX_MODEL", "gpt-5.3-codex"),
+		CodexReasoningEffort:      envOrDefault("CODEX_REASONING_EFFORT", "medium"),
+		CodexSandbox:              envOrDefault("CODEX_SANDBOX", "read-only"),
+		CodexSessionStore:         resolvePath(projectRoot, envOrDefault("CODEX_SESSION_STORE", ".askplanner/sessions.json")),
+		CodexMaxTurns:             envAsInt("CODEX_MAX_TURNS", 30),
+		CodexSessionTTLHours:      envAsInt("CODEX_SESSION_TTL_HOURS", 24),
+		CodexTimeoutSec:           envAsInt("CODEX_TIMEOUT_SEC", 120),
+		ClinicEnableAutoSlowQuery: envAsBool("CLINIC_ENABLE_AUTO_SLOWQUERY", false),
+		ClinicAPIKey:              strings.TrimSpace(os.Getenv("CLINIC_API_KEY")),
+		ClinicHTTPTimeoutSec:      envAsInt("CLINIC_HTTP_TIMEOUT_SEC", 15),
+		LogFile:                   resolvePath(projectRoot, envOrDefault("LOG_FILE", ".askplanner/askplanner.log")),
+		FeishuAppID:               os.Getenv("FEISHU_APP_ID"),
+		FeishuAppSecret:           os.Getenv("FEISHU_APP_SECRET"),
+		FeishuBotName:             strings.ToLower(strings.TrimSpace(envOrDefault("FEISHU_BOT_NAME", "askplanner"))),
+		FeishuDedupTimeoutInMin:   envAsInt("FEISHU_DEDUP_MESSAGE_TIMEOUT_IN_MIN", 3600),
+		FeishuFileDir:             resolvePath(projectRoot, envOrDefault("FEISHU_FILE_DIR", ".askplanner/lark-files")),
+		FeishuUserFileMaxItems:    envAsInt("FEISHU_USER_FILE_MAX_ITEMS", 100),
 	}, nil
 }
 
@@ -103,6 +111,22 @@ func envAsInt(key string, defaultVal int) int {
 		return defaultVal
 	}
 	return n
+}
+
+func envAsBool(key string, defaultVal bool) bool {
+	v := strings.TrimSpace(strings.ToLower(os.Getenv(key)))
+	if v == "" {
+		return defaultVal
+	}
+
+	switch v {
+	case "1", "true", "yes", "on":
+		return true
+	case "0", "false", "no", "off":
+		return false
+	default:
+		return defaultVal
+	}
 }
 
 func SetupLogging(logFile string) (*os.File, error) {

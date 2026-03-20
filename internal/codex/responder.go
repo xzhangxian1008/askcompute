@@ -49,10 +49,10 @@ func NewResponder(cfg *config.Config) (*Responder, error) {
 }
 
 func (r *Responder) Answer(ctx context.Context, conversationKey, question string) (string, error) {
-	return r.AnswerWithContext(ctx, conversationKey, question, AttachmentContext{})
+	return r.AnswerWithContext(ctx, conversationKey, question, RuntimeContext{})
 }
 
-func (r *Responder) AnswerWithContext(ctx context.Context, conversationKey, question string, attachment AttachmentContext) (string, error) {
+func (r *Responder) AnswerWithContext(ctx context.Context, conversationKey, question string, runtime RuntimeContext) (string, error) {
 	if r.timeout > 0 {
 		var cancel context.CancelFunc
 		ctx, cancel = context.WithTimeout(ctx, r.timeout)
@@ -63,7 +63,7 @@ func (r *Responder) AnswerWithContext(ctx context.Context, conversationKey, ques
 	record, ok := r.store.Get(conversationKey)
 
 	if ok && r.canResume(record, now) {
-		result, err := r.runner.RunResume(ctx, record.SessionID, BuildResumePrompt(question, attachment))
+		result, err := r.runner.RunResume(ctx, record.SessionID, BuildResumePrompt(question, runtime))
 		if err == nil {
 			record.LastActiveAt = now
 			record.TurnCount++
@@ -81,7 +81,7 @@ func (r *Responder) AnswerWithContext(ctx context.Context, conversationKey, ques
 		log.Printf("[codex] resume failed for %s, starting a new session: %v", conversationKey, err)
 	}
 
-	initialPrompt := BuildInitialPrompt(r.prompt, summarizeTurns(record.Turns), question, attachment)
+	initialPrompt := BuildInitialPrompt(r.prompt, summarizeTurns(record.Turns), question, runtime)
 	result, err := r.runner.RunNew(ctx, initialPrompt)
 	if err != nil {
 		return "", err

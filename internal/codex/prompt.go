@@ -39,13 +39,14 @@ type AttachmentContext struct {
 	Items   []AttachmentItem
 }
 
-func BuildInitialPrompt(normalizedPrompt, summary, question string, attachment AttachmentContext) string {
+func BuildInitialPrompt(normalizedPrompt, summary, question string, runtime RuntimeContext) string {
 	var sb strings.Builder
 	sb.WriteString(strings.TrimSpace(normalizedPrompt))
 	sb.WriteString("\n\n## Runtime Context\n")
 	sb.WriteString("- You are serving a TiDB query tuning chat relay backed by Codex CLI.\n")
 	sb.WriteString("- Answer the user's latest message directly.\n")
-	writeAttachmentContext(&sb, attachment)
+	writeAttachmentContext(&sb, runtime.Attachment)
+	writeClinicContext(&sb, runtime.Clinic)
 	if strings.TrimSpace(summary) != "" {
 		sb.WriteString("\n## Conversation Summary\n")
 		sb.WriteString(strings.TrimSpace(summary))
@@ -57,10 +58,11 @@ func BuildInitialPrompt(normalizedPrompt, summary, question string, attachment A
 	return sb.String()
 }
 
-func BuildResumePrompt(question string, attachment AttachmentContext) string {
+func BuildResumePrompt(question string, runtime RuntimeContext) string {
 	var sb strings.Builder
 	sb.WriteString("Continue the existing TiDB query tuning conversation.\n")
-	writeAttachmentContext(&sb, attachment)
+	writeAttachmentContext(&sb, runtime.Attachment)
+	writeClinicContext(&sb, runtime.Clinic)
 	sb.WriteString("\nNew user message:\n")
 	sb.WriteString(strings.TrimSpace(question))
 	sb.WriteByte('\n')
@@ -108,6 +110,113 @@ func writeAttachmentContext(sb *strings.Builder, attachment AttachmentContext) {
 		if original := strings.TrimSpace(item.OriginalName); original != "" && original != item.Name {
 			sb.WriteString(" original_name=")
 			sb.WriteString(original)
+		}
+		sb.WriteByte('\n')
+	}
+}
+
+func writeClinicContext(sb *strings.Builder, clinic *ClinicContext) {
+	if clinic == nil {
+		return
+	}
+
+	sb.WriteString("- Clinic slow query link detected and prefetched by the relay. Treat the fetched data below as the ground truth for this turn.\n")
+	sb.WriteString("- Clinic source URL: ")
+	sb.WriteString(strings.TrimSpace(clinic.SourceURL))
+	sb.WriteByte('\n')
+	sb.WriteString("- Clinic cluster scope: cluster_id=")
+	sb.WriteString(strings.TrimSpace(clinic.ClusterID))
+	if v := strings.TrimSpace(clinic.ClusterName); v != "" {
+		sb.WriteString(" cluster_name=")
+		sb.WriteString(v)
+	}
+	if v := strings.TrimSpace(clinic.OrgName); v != "" {
+		sb.WriteString(" org_name=")
+		sb.WriteString(v)
+	}
+	if v := strings.TrimSpace(clinic.DeployType); v != "" {
+		sb.WriteString(" deploy_type=")
+		sb.WriteString(v)
+	}
+	sb.WriteByte('\n')
+	if !clinic.StartTime.IsZero() && !clinic.EndTime.IsZero() {
+		sb.WriteString("- Clinic time range (UTC): ")
+		sb.WriteString(clinic.StartTime.UTC().Format(time.RFC3339))
+		sb.WriteString(" to ")
+		sb.WriteString(clinic.EndTime.UTC().Format(time.RFC3339))
+		sb.WriteByte('\n')
+	}
+	if clinic.Digest != "" || clinic.Database != "" || clinic.Instance != "" {
+		sb.WriteString("- Clinic filters:")
+		if clinic.Digest != "" {
+			sb.WriteString(" digest=")
+			sb.WriteString(clinic.Digest)
+		}
+		if clinic.Database != "" {
+			sb.WriteString(" db=")
+			sb.WriteString(clinic.Database)
+		}
+		if clinic.Instance != "" {
+			sb.WriteString(" instance=")
+			sb.WriteString(clinic.Instance)
+		}
+		sb.WriteByte('\n')
+	}
+	sb.WriteString("- Clinic aggregate slow query stats:")
+	sb.WriteString(fmt.Sprintf(" total_queries=%d unique_digests=%d avg_query_time_sec=%.6f max_query_time_sec=%.6f\n",
+		clinic.Summary.TotalQueries,
+		clinic.Summary.UniqueDigests,
+		clinic.Summary.AvgQueryTime,
+		clinic.Summary.MaxQueryTime,
+	))
+	if clinic.NoRows {
+		sb.WriteString("- Clinic query returned no slow query rows for this exact scope.\n")
+		return
+	}
+	if len(clinic.TopDigests) == 0 {
+		sb.WriteString("- Clinic did not return grouped slow-query digests.\n")
+		return
+	}
+
+	sb.WriteString("- Clinic top slow-query digests (grouped):\n")
+	for _, item := range clinic.TopDigests {
+		sb.WriteString("  - digest=")
+		sb.WriteString(item.Digest)
+		sb.WriteString(fmt.Sprintf(" exec_count=%d avg_sec=%.6f max_sec=%.6f",
+			item.ExecutionCount,
+			item.AvgQueryTime,
+			item.MaxQueryTime,
+		))
+		if item.MaxTotalKeys > 0 {
+			sb.WriteString(fmt.Sprintf(" max_total_keys=%d", item.MaxTotalKeys))
+		}
+		if item.MaxProcessKeys > 0 {
+			sb.WriteString(fmt.Sprintf(" max_process_keys=%d", item.MaxProcessKeys))
+		}
+		if item.MaxResultRows > 0 {
+			sb.WriteString(fmt.Sprintf(" max_result_rows=%d", item.MaxResultRows))
+		}
+		if item.MaxMemBytes > 0 {
+			sb.WriteString(fmt.Sprintf(" max_mem_bytes=%d", item.MaxMemBytes))
+		}
+		if item.MaxDiskBytes > 0 {
+			sb.WriteString(fmt.Sprintf(" max_disk_bytes=%d", item.MaxDiskBytes))
+		}
+		if item.SampleDB != "" {
+			sb.WriteString(" db=")
+			sb.WriteString(item.SampleDB)
+		}
+		if item.SampleInstance != "" {
+			sb.WriteString(" instance=")
+			sb.WriteString(item.SampleInstance)
+		}
+		if item.SampleIndexes != "" {
+			sb.WriteString(" indexes=")
+			sb.WriteString(compactText(item.SampleIndexes, 120))
+		}
+		if item.SampleSQL != "" {
+			sb.WriteString(" sample_sql=")
+			sb.WriteString(compactText(item.SampleSQL, 240))
 		}
 		sb.WriteByte('\n')
 	}

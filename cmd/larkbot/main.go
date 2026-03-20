@@ -20,6 +20,7 @@ import (
 	larkws "github.com/larksuite/oapi-sdk-go/v3/ws"
 
 	"lab/askplanner/internal/attachments"
+	"lab/askplanner/internal/clinic"
 	"lab/askplanner/internal/codex"
 	"lab/askplanner/internal/config"
 )
@@ -107,6 +108,7 @@ func main() {
 	if err != nil {
 		log.Fatalf("build codex responder: %v", err)
 	}
+	prefetcher := clinic.NewPrefetcher(cfg)
 	attachmentManager, err := attachments.NewManager(cfg.FeishuFileDir, cfg.FeishuUserFileMaxItems)
 	if err != nil {
 		log.Fatalf("build attachment manager: %v", err)
@@ -141,7 +143,7 @@ func main() {
 				return nil
 			}
 
-			answer, err := handleEvent(ctx, apiClient, responder, attachmentManager, event)
+			answer, err := handleEvent(ctx, apiClient, responder, prefetcher, attachmentManager, event)
 			if err != nil {
 				log.Printf("[larkbot] handle event error: %v (message_id=%s)", err, messageID)
 				answer = "Agent Error: " + err.Error()
@@ -168,7 +170,7 @@ func main() {
 	}
 }
 
-func handleEvent(ctx context.Context, apiClient *lark.Client, responder *codex.Responder, manager *attachments.Manager, event *larkim.P2MessageReceiveV1) (string, error) {
+func handleEvent(ctx context.Context, apiClient *lark.Client, responder *codex.Responder, prefetcher *clinic.Prefetcher, manager *attachments.Manager, event *larkim.P2MessageReceiveV1) (string, error) {
 	prepared, err := prepareReply(ctx, apiClient, manager, event)
 	if err != nil {
 		return "", err
@@ -184,7 +186,17 @@ func handleEvent(ctx context.Context, apiClient *lark.Client, responder *codex.R
 	log.Printf("[larkbot] answering question: %q (message_id=%s, conversation=%s)",
 		question, extractMessageID(event), prepared.conversationKey)
 
-	answer, err := responder.AnswerWithContext(ctx, prepared.conversationKey, question, prepared.attachmentCtx)
+	runtimeCtx, err := prefetcher.Enrich(ctx, question, codex.RuntimeContext{
+		Attachment: prepared.attachmentCtx,
+	})
+	if err != nil {
+		if msg := clinic.UserFacingMessage(err); msg != "" {
+			return msg, nil
+		}
+		return "", err
+	}
+
+	answer, err := responder.AnswerWithContext(ctx, prepared.conversationKey, question, runtimeCtx)
 	if err != nil {
 		return "", err
 	}

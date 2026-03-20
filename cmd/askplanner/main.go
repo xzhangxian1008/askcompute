@@ -9,6 +9,7 @@ import (
 	"os/signal"
 	"strings"
 
+	"lab/askplanner/internal/clinic"
 	"lab/askplanner/internal/codex"
 	"lab/askplanner/internal/config"
 )
@@ -32,6 +33,7 @@ func main() {
 	if err != nil {
 		log.Fatalf("build codex responder: %v", err)
 	}
+	prefetcher := clinic.NewPrefetcher(cfg)
 
 	fmt.Printf("askplanner v2 (backend: codex-cli, model: %s)\n", cfg.CodexModel)
 	fmt.Println("Type your question, or 'quit' to exit. Use 'reset' to start a new session.")
@@ -64,7 +66,17 @@ func main() {
 		}
 
 		fmt.Println()
-		answer, err := responder.Answer(ctx, conversationKey, question)
+		runtimeCtx, err := prefetcher.Enrich(ctx, question, codex.RuntimeContext{})
+		if err != nil {
+			if msg := clinic.UserFacingMessage(err); msg != "" {
+				fmt.Printf("%s\n\n", msg)
+				continue
+			}
+			fmt.Printf("Error: %v\n\n", err)
+			continue
+		}
+
+		answer, err := responder.AnswerWithContext(ctx, conversationKey, question, runtimeCtx)
 		if err != nil {
 			fmt.Printf("Error: %v\n\n", err)
 			continue
