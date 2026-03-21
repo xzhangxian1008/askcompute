@@ -218,6 +218,7 @@ go test ./...
 - [ ] support switch to different release version of tidb repo and tidb-docs repo
 - [ ] support context management
 - [ ] support model management
+- [ ] slow query finder
 
 ### implementation pespective
 - [ ] rotate log to avoid getting log too large
