@@ -73,6 +73,25 @@ type downloadedResource struct {
 	messageCreate time.Time
 }
 
+type replyBody struct {
+	msgType string
+	content string
+}
+
+type postMessageContent struct {
+	ZhCN postLocale `json:"zh_cn"`
+}
+
+type postLocale struct {
+	Title   string         `json:"title,omitempty"`
+	Content [][]postMDNode `json:"content"`
+}
+
+type postMDNode struct {
+	Tag  string `json:"tag"`
+	Text string `json:"text"`
+}
+
 func (d *messageDedup) isDuplicate(messageID string) bool {
 	_, loaded := d.seen.LoadOrStore(messageID, time.Now())
 	return loaded
@@ -156,15 +175,14 @@ func main() {
 					answer = "Agent Error: " + err.Error()
 				}
 
-				content, err := buildTextContent(answer)
-				if err != nil {
-					return fmt.Errorf("build reply content: %w", err)
-				}
-				if err := replyMessage(ctx, apiClient, messageID, content); err != nil {
-					return fmt.Errorf("reply message: %w", err)
-				}
-				return nil
-			})
+			reply, err := buildReplyBody(answer)
+			if err != nil {
+				return fmt.Errorf("build reply body: %w", err)
+			}
+			if err := replyMessage(ctx, apiClient, messageID, reply); err != nil {
+				return fmt.Errorf("reply message: %w", err)
+			}
+			return nil
 		})
 
 	cli := larkws.NewClient(cfg.FeishuAppID, cfg.FeishuAppSecret,
@@ -916,15 +934,30 @@ func buildConversationKey(event *larkim.P2MessageReceiveV1) string {
 	}
 }
 
-func buildTextContent(text string) (string, error) {
-	payload := map[string]string{
-		"text": strings.TrimSpace(text),
+func buildReplyBody(text string) (replyBody, error) {
+	text = strings.TrimSpace(text)
+	if text == "" {
+		text = " "
+	}
+
+	payload := postMessageContent{
+		ZhCN: postLocale{
+			Content: [][]postMDNode{{
+				{
+					Tag:  "md",
+					Text: text,
+				},
+			}},
+		},
 	}
 	b, err := json.Marshal(payload)
 	if err != nil {
-		return "", err
+		return replyBody{}, err
 	}
-	return string(b), nil
+	return replyBody{
+		msgType: "post",
+		content: string(b),
+	}, nil
 }
 
 func withTypingReaction(ctx context.Context, apiClient *lark.Client, messageID string, run func() error) error {
@@ -994,14 +1027,14 @@ func deleteMessageReaction(ctx context.Context, apiClient *lark.Client, messageI
 	return nil
 }
 
-func replyMessage(ctx context.Context, apiClient *lark.Client, messageID, content string) error {
+func replyMessage(ctx context.Context, apiClient *lark.Client, messageID string, body replyBody) error {
 	log.Printf("[larkbot] replying to message_id=%s", messageID)
 	resp, err := apiClient.Im.V1.Message.Reply(ctx,
 		larkim.NewReplyMessageReqBuilder().
 			MessageId(messageID).
 			Body(larkim.NewReplyMessageReqBodyBuilder().
-				MsgType("text").
-				Content(content).
+				MsgType(body.msgType).
+				Content(body.content).
 				Uuid("reply-"+messageID).
 				Build()).
 			Build())

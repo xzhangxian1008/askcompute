@@ -232,3 +232,67 @@ func readJSONBody(r *http.Request, dst any) error {
 	}
 	return json.Unmarshal(body, dst)
 }
+
+func TestBuildReplyBodyUsesPostMarkdown(t *testing.T) {
+	answer := strings.TrimSpace("## Result\n\nSee [TiDB Docs](https://docs.pingcap.com/tidb/stable/) for details.\n\n```sql\nselect 1;\n```")
+
+	body, err := buildReplyBody(answer)
+	if err != nil {
+		t.Fatalf("buildReplyBody error: %v", err)
+	}
+	if body.msgType != "post" {
+		t.Fatalf("msgType = %q, want post", body.msgType)
+	}
+
+	var content struct {
+		ZhCN struct {
+			Content [][]struct {
+				Tag  string `json:"tag"`
+				Text string `json:"text"`
+			} `json:"content"`
+		} `json:"zh_cn"`
+	}
+	if err := json.Unmarshal([]byte(body.content), &content); err != nil {
+		t.Fatalf("unmarshal content: %v", err)
+	}
+	if len(content.ZhCN.Content) != 1 || len(content.ZhCN.Content[0]) != 1 {
+		t.Fatalf("unexpected content shape: %+v", content.ZhCN.Content)
+	}
+	node := content.ZhCN.Content[0][0]
+	if node.Tag != "md" {
+		t.Fatalf("tag = %q, want md", node.Tag)
+	}
+	if node.Text != answer {
+		t.Fatalf("markdown text mismatch:\n got: %q\nwant: %q", node.Text, answer)
+	}
+	if !strings.Contains(node.Text, "[TiDB Docs](https://docs.pingcap.com/tidb/stable/)") {
+		t.Fatalf("hyperlink markdown missing: %q", node.Text)
+	}
+	if !strings.Contains(node.Text, "```sql\nselect 1;\n```") {
+		t.Fatalf("code fence markdown missing: %q", node.Text)
+	}
+}
+
+func TestBuildReplyBodyNormalizesEmptyText(t *testing.T) {
+	body, err := buildReplyBody("   \n\t ")
+	if err != nil {
+		t.Fatalf("buildReplyBody error: %v", err)
+	}
+	if body.msgType != "post" {
+		t.Fatalf("msgType = %q, want post", body.msgType)
+	}
+
+	var content struct {
+		ZhCN struct {
+			Content [][]struct {
+				Text string `json:"text"`
+			} `json:"content"`
+		} `json:"zh_cn"`
+	}
+	if err := json.Unmarshal([]byte(body.content), &content); err != nil {
+		t.Fatalf("unmarshal content: %v", err)
+	}
+	if got := content.ZhCN.Content[0][0].Text; got != " " {
+		t.Fatalf("text = %q, want single space", got)
+	}
+}
