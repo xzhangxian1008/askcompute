@@ -206,3 +206,23 @@ go build -o bin/askplanner_larkbot ./cmd/larkbot
 go build -o bin/printprompt ./cmd/printprompt
 go test ./...
 ```
+## Roadmap
+### user pesepctive
+- [x] fix the larkbot message resent problem
+- [x] support process image
+- [x] support process plan replayer(unzip replayer and start diagnose automatically)
+- [x] support diagnose by clinic link
+- [x] output a markdown file if output too long
+- [ ] error handling: make sure all errors should return to user clearly(like network issue, rate limte ect)
+- [ ] support process clinic in batch mode
+- [ ] support switch to different release version of tidb repo and tidb-docs repo
+- [ ] support context management
+- [ ] support model management
+
+### implementation pespective
+- [ ] rotate log to avoid getting log too large
+- [ ] optimize the write process of session store
+- [ ] security related: better put agent in docker
+- [ ] rate-limit
+- [ ] use codex cli sdk to avoid start a new process for every user requesT
+- [ ] store dedup map in disk to avoid the map was lost when process restart.
