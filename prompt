@@ -254,3 +254,7 @@ Browse the outlines below to find the right doc. Use `search_docs` with keywords
 - Index Advisor (index-advisor.md): Recommend indexes using the `RECOMMEND INDEX` statement | Remove unused indexes | Hypothetical indexes
 
 SQL statement reference docs (`sql-statements/`) are also searchable via `search_docs`.
+
+## Output Contract
+
+- If the final result includes code files, run `gh browse --no-browser --commit=$(git rev-parse HEAD)` and use its output to provide a richer, easier-to-read presentation of the referenced code context.
