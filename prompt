@@ -2,6 +2,11 @@ Treat the following bootstrap prompt as the domain-specific instruction for this
 
 This runtime uses Codex CLI instead of askcompute's custom tools.
 
+This is a markdown file. Markdown file identifies sections with `#`, `##`, `###` and so on. You must recognize the section and subsection.
+
+You can ignore the line that has been commented and has `TODO(for author)` in it. For example: 
+<!-- TODO(for author) This is an example, ignore it -->
+
 Tool adaptation rules:
 - If the prompt mentions read_file, inspect files with shell commands such as rg, nl -ba, sed -n, and cat.
 - If the prompt mentions search_code, search the workspace with rg.
@@ -43,8 +48,129 @@ All functions used in tidb are located in pkg/expression/ directory.
 
 Memory tracker is a very important tool in tidb executors as it tracks and control memory usage in tidb, you can find codes in pkg/util/memory/tracker.go. Similarily, disk tracker is in pkg/util/disk/tracker.go. Disk tracker is mainly used for spill in the tidb executor.
 
-## Skill Workflow & References
+## Skills
 
+Tips:
+- All xxx, yyy in Skills section and its subsections refer to a random name.
+
+First, you need to recognize the type of question. The following lists the type of questions that you can refer to.
+1. About configuration or system variable
+   - You can read `Configuration or System Variable` subsection to get more details
+2. About feature in tidb
+   - You can read `Feature` subsection to get more details
+3. About observability
+   - You can read `Observability` subsection to get more details
+4. Debug
+   - You can read `Debug` subsection to get more details
+
+If encountering a question that you feel hard to classify, you should record the question in the `ambiguous-question.md` file. If this file is inexistence, create it in the working directory. Then you can handle this question at your will, but you need to tell user that if the answer is bad he can reach out to the tidb compute engine developers for more help because your skill is not trained for this type of question yet. Tips: not all messages sent by users are question, you need to identify if this message is a question.
+
+<!-- TODO(for author) maybe we can take some examples describing which messages are questions -->
+
+All docs are located in contrib/tidb-docs, you can read any of them if necessary.
+
+### Configuration or System Variable
+
+How to know it's a question about configuration or system variable? The following shows some examples:
+- What does xxx do?
+- How to configure xxx and take it effect?
+- Is there a way to limit the maximum connections count to control resource?
+- When the xxx is introduced into tidb?
+- Which tidb version starts to support xxx?
+
+You can refer to the following docs to get related information:
+- For configuration, you can refer to:
+  - contrib/tidb-docs/tidb-configuration-file.md
+- For system variable, you can refer to:
+  - contrib/tidb-docs/system-variables.md
+  - contrib/tidb-docs/system-variables-reference.md
+
+<!-- TODO(for author) maybe we can more docs here -->
+
+If encountering a question belonging to this section, you should record the question in the `configuration-or-system-sariable-question.md` file. If this file is inexistence, create it in the working directory.
+
+### Feature
+
+How to know it's a question about feature? The following shows some examples:
+- Is parallel aggregation supported in tidb?
+- Tell me which functions are supported by the current window executor.
+
+The following lists compute engine related feature docs:
+- contrib/tidb-docs/explain-overview.md
+- contrib/tidb-docs/explain-aggregation.md
+- contrib/tidb-docs/explain-index-merge.md
+- contrib/tidb-docs/explain-indexes.md
+- contrib/tidb-docs/explain-joins.md
+
+<!-- TODO(for author) maybe explain docs should be moved to observability section -->
+
+If encountering a question belonging to this section, you should record the question in the `feature.md` file. If this file is inexistence, create it in the working directory.
+
+### Observability
+
+How to know it's a question about observability? The following shows some examples:
+- How to check the cpu usage?
+- How to check the memory usage?
+- How to know the p999 in tidb?
+- What does xxx means in yyy panel?
+- Is there any log to know when the execution time for a sql?
+
+If encountering a question belonging to this section, you should record the question in the `observability.md` file. If this file is inexistence, create it in the working directory.
+
+<!-- TODO(for author) add some docs for observability -->
+
+### Debug
+
+How to know it's a question about debug? The following shows some examples:
+- Why the cpu is high?
+- Why the cpu is low?
+- Why memory usage is high?
+- Why sql is slow?
+- Why sql not return?
+- Sql returns error.
+- There is an error log.
+- Sql is not fast enough, help me to improve it.
+- Sql uses many memory usage, help me to check if it's normal.
+- goroutine file shows some goroutines have been created for a long time, maybe there is a goroutine leak, help me to handle this problem.
+- Return result is inconsistent with mysql
+- Result is inconsistent
+
+This is a navigation skill introduction for you. You should judge the type of debug problem and go to the corresponding directories to find clues. Moreover, if you think the information in the corresponding directories is not enough, feel free to read more directories, that's up to you.
+
+We split problems into following types:
+- cpu
+  - You can go to `skills/cpu`
+- memory
+  - You can go to `skills/memory`
+- network
+  - You can go to `skills/network`
+- result inconsistent
+  - You can go to `skills/inconsistent`
+- hang(sql not return)
+  - You can go to `skills/hang`
+- goroutine or memory leak
+  - You can go to `skills/leak`
+- performance
+  - You can go to `skills/performance`
+
+Contents in `skills/` directory records the oncall cases, cases we encountered before and the experience that summarized by developers.
+
+If encountering a question belonging to this section, you should record the question in the `debug.md` file. If this file is inexistence, create it in the working directory.
+
+#### Common problems
+
+This section tells you some common problems and how to handle them.
+
+1. Why the cpu is high?
+2. Why the cpu is low?
+3. Why memory usage is high?
+4. Why sql is slow?
+5. Why sql not return?
+6. Sql returns error.
+   - panic
+7. There is an error log.
+8. Return result is inconsistent with mysql
+9. Result is inconsistent
 
 ## Official Docs
 
