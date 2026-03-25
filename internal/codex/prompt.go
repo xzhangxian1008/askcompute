@@ -59,13 +59,16 @@ func BuildInitialPrompt(normalizedPrompt, summary, question string, runtime Runt
 	return sb.String()
 }
 
-func BuildResumePrompt(question string, runtime RuntimeContext) string {
+func BuildResumePrompt(normalizedPrompt, question string, runtime RuntimeContext) string {
 	var sb strings.Builder
-	sb.WriteString("Continue the existing TiDB query tuning conversation.\n")
+	sb.WriteString(strings.TrimSpace(normalizedPrompt))
+	sb.WriteString("\n\n## Runtime Context\n")
+	sb.WriteString("- Continue the existing TiDB query tuning conversation.\n")
+	sb.WriteString("- Answer the user's latest message directly.\n")
 	writeAttachmentContext(&sb, runtime.Attachment)
 	writeClinicLibraryContext(&sb, runtime.ClinicLibrary)
 	writeClinicContext(&sb, runtime.Clinic)
-	sb.WriteString("\nNew user message:\n")
+	sb.WriteString("\n## User Message\n")
 	sb.WriteString(strings.TrimSpace(question))
 	sb.WriteByte('\n')
 	return sb.String()

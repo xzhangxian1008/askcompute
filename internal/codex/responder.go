@@ -63,7 +63,7 @@ func (r *Responder) AnswerWithContext(ctx context.Context, conversationKey, ques
 	record, ok := r.store.Get(conversationKey)
 
 	if ok && r.canResume(record, now) {
-		result, err := r.runner.RunResume(ctx, record.SessionID, BuildResumePrompt(question, runtime))
+		result, err := r.runner.RunResume(ctx, record.SessionID, BuildResumePrompt(r.prompt, question, runtime))
 		if err == nil {
 			record.LastActiveAt = now
 			record.TurnCount++

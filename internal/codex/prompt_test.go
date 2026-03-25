@@ -113,24 +113,30 @@ func TestBuildInitialPromptIncludesClinicContext(t *testing.T) {
 }
 
 func TestBuildResumePromptIncludesEmptyClinicLibrary(t *testing.T) {
-	prompt := BuildResumePrompt("what next", RuntimeContext{
+	prompt := BuildResumePrompt("base prompt", "what next", RuntimeContext{
 		ClinicLibrary: &ClinicLibraryContext{
 			RootDir: "/tmp/clinic-user-a",
 		},
 	})
 
+	if !strings.Contains(prompt, "base prompt") {
+		t.Fatalf("prompt missing base prompt:\n%s", prompt)
+	}
 	if !strings.Contains(prompt, "Current Clinic entries: none.") {
 		t.Fatalf("prompt missing empty clinic-library marker:\n%s", prompt)
 	}
 }
 
 func TestBuildResumePromptHandlesEmptyAttachmentLibrary(t *testing.T) {
-	prompt := BuildResumePrompt("what next", RuntimeContext{
+	prompt := BuildResumePrompt("base prompt", "what next", RuntimeContext{
 		Attachment: AttachmentContext{
 			RootDir: "/tmp/user-a",
 		},
 	})
 
+	if !strings.Contains(prompt, "## User Message\nwhat next") {
+		t.Fatalf("prompt missing user message section:\n%s", prompt)
+	}
 	if !strings.Contains(prompt, "Current top-level entries: none.") {
 		t.Fatalf("prompt missing empty-library marker:\n%s", prompt)
 	}

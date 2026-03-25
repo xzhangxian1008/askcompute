@@ -46,6 +46,7 @@ func (r *Runner) RunResume(ctx context.Context, sessionID, prompt string) (*RunR
 	args := []string{
 		"exec",
 		"resume",
+		"--sandbox", r.Sandbox,
 		"--json",
 	}
 	if strings.TrimSpace(r.Model) != "" {
